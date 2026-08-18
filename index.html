@@ -62,16 +62,14 @@
     }
     .bg-canvas{
       position:absolute;inset:0;width:100%;height:100%;display:block;
-      opacity:.58;image-rendering:pixelated;image-rendering:crisp-edges;
-      mix-blend-mode:screen;
-      filter:saturate(.6);
+      opacity:.45;
     }
     .bg-veil{
       position:absolute;inset:0;z-index:2;
       background:
-        radial-gradient(ellipse 90% 55% at 15% -8%,rgba(255,255,255,.08),transparent 55%),
-        radial-gradient(ellipse 70% 45% at 90% 15%,rgba(255,255,255,.04),transparent 55%),
-        linear-gradient(180deg,rgba(0,0,0,.55) 0%,rgba(0,0,0,.38) 38%,rgba(0,0,0,.78) 100%);
+        radial-gradient(ellipse 90% 55% at 15% -8%,rgba(255,255,255,.04),transparent 55%),
+        radial-gradient(ellipse 70% 45% at 90% 15%,rgba(255,255,255,.02),transparent 55%),
+        linear-gradient(180deg,rgba(0,0,0,.3) 0%,rgba(0,0,0,.2) 38%,rgba(0,0,0,.5) 100%);
     }
     .bg-orb{
       position:fixed;border-radius:50%;
@@ -1414,89 +1412,52 @@
 (function(){
   var canvas = document.getElementById('bg-canvas');
   if (!canvas) return;
-  var ctx = canvas.getContext('2d', { alpha:false, desynchronized:true });
+  var ctx = canvas.getContext('2d');
   if (!ctx) return;
-  var FRAME_COUNT = 90;
-  var fw = 500, fh = 700;
-  var PX_PER_FRAME = 12;
-  var frames = new Array(FRAME_COUNT);
-  var ready = false;
-  var targetPos = 0;
-  var displayPos = 0;
-  var scrollY0 = window.scrollY || 0;
-  var running = false;
   var vw = 0, vh = 0;
-  var drawW = 0, drawH = 0, drawX = 0, drawY = 0;
-  function layout(){
-    vw = window.innerWidth;
-    vh = window.innerHeight;
-    canvas.width = Math.max(1, vw);
-    canvas.height = Math.max(1, vh);
-    var scale = Math.max(vw / fw, vh / fh);
-    drawW = Math.round(fw * scale);
-    drawH = Math.round(fh * scale);
-    drawX = Math.round((vw - drawW) * 0.5);
-    drawY = Math.round((vh - drawH) * 0.5);
-    paint(displayPos);
+  function resize(){
+    vw = canvas.width = window.innerWidth;
+    vh = canvas.height = window.innerHeight;
   }
-  function wrap(n){ return ((n % FRAME_COUNT) + FRAME_COUNT) % FRAME_COUNT; }
-  function paint(pos){
-    ctx.fillStyle = '#050505';
-    ctx.fillRect(0, 0, vw, vh);
-    ctx.imageSmoothingEnabled = false;
-    var f = wrap(pos);
-    var i0 = Math.floor(f) % FRAME_COUNT;
-    var i1 = (i0 + 1) % FRAME_COUNT;
-    var t = f - Math.floor(f);
-    var a = frames[i0];
-    var b = frames[i1];
-    if (a && a.complete && a.naturalWidth) {
-      ctx.globalAlpha = 1;
-      ctx.drawImage(a, drawX, drawY, drawW, drawH);
-    }
-    if (t > 0.015 && b && b.complete && b.naturalWidth) {
-      ctx.globalAlpha = t;
-      ctx.drawImage(b, drawX, drawY, drawW, drawH);
-      ctx.globalAlpha = 1;
-    }
-  }
-  function kick(){ if (running) return; running = true; requestAnimationFrame(tick); }
-  function tick(){
-    var ease = 0.08;
-    displayPos += (targetPos - displayPos) * ease;
-    if (Math.abs(targetPos - displayPos) < 0.001) {
-      displayPos = targetPos;
-      paint(displayPos);
-      running = false;
-      return;
-    }
-    paint(displayPos);
-    requestAnimationFrame(tick);
-  }
+  resize();
+  window.addEventListener('resize', resize, { passive:true });
+
+  var blobs = [
+    { x:0.15, y:0.2,  r:0.35, vx:0.00012, vy:0.00009, phase:0,       color:[255,255,255] },
+    { x:0.8,  y:0.3,  r:0.3,  vx:-0.00008,vy:0.00014, phase:1.8,    color:[220,220,230] },
+    { x:0.5,  y:0.75, r:0.28, vx:0.0001,  vy:-0.00007,phase:3.5,    color:[240,240,245] },
+    { x:0.25, y:0.6,  r:0.22, vx:-0.00015,vy:-0.0001, phase:5.2,    color:[200,205,215] },
+    { x:0.7,  y:0.8,  r:0.25, vx:0.00006, vy:0.00012, phase:7.1,    color:[230,230,240] },
+  ];
+
+  var scrollOffset = 0;
+  var targetScroll = 0;
   window.addEventListener('scroll', function(){
-    var y = window.scrollY || 0;
-    var dy = y - scrollY0;
-    scrollY0 = y;
-    if (dy === 0) return;
-    targetPos += dy / PX_PER_FRAME;
-    kick();
+    targetScroll = window.scrollY || 0;
   }, { passive:true });
-  window.addEventListener('resize', layout, { passive:true });
-  var loadedCount = 0;
-  for (var i = 0; i < FRAME_COUNT; i++) {
-    (function(idx){
-      var img = new Image();
-      img.decoding = 'async';
-      img.onload = function(){
-        loadedCount++;
-        if (!ready) { ready = true; }
-        layout();
-      };
-      img.src = 'bg-frames/' + String(idx).padStart(3, '0') + '.webp';
-      frames[idx] = img;
-    })(i);
+
+  function draw(t){
+    scrollOffset += (targetScroll - scrollOffset) * 0.05;
+    ctx.fillStyle = '#06060a';
+    ctx.fillRect(0, 0, vw, vh);
+
+    for (var i = 0; i < blobs.length; i++){
+      var b = blobs[i];
+      var px = (b.x + Math.sin(t * b.vx * 800 + b.phase) * 0.08) * vw;
+      var py = (b.y + Math.cos(t * b.vy * 800 + b.phase * 1.3) * 0.06) * vh - scrollOffset * 0.03;
+      var rr = b.r * Math.min(vw, vh);
+      var grad = ctx.createRadialGradient(px, py, 0, px, py, rr);
+      var c = b.color;
+      grad.addColorStop(0, 'rgba(' + c[0] + ',' + c[1] + ',' + c[2] + ',0.07)');
+      grad.addColorStop(0.5, 'rgba(' + c[0] + ',' + c[1] + ',' + c[2] + ',0.025)');
+      grad.addColorStop(1, 'rgba(' + c[0] + ',' + c[1] + ',' + c[2] + ',0)');
+      ctx.fillStyle = grad;
+      ctx.fillRect(0, 0, vw, vh);
+    }
+
+    requestAnimationFrame(draw);
   }
-  layout();
+  requestAnimationFrame(draw);
 })();
 </script>
 
