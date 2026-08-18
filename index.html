@@ -1072,9 +1072,7 @@
 </div>
 <div class="noise" aria-hidden="true"></div>
 <div class="scroll-progress" id="scroll-progress" aria-hidden="true"></div>
-<div class="cursor-dot" id="cursor-dot" aria-hidden="true"></div>
-<div class="cursor-ring" id="cursor-ring" aria-hidden="true"></div>
-<div class="cursor-trail" id="cursor-trail" aria-hidden="true"></div>
+<div class="cursor-dot" id="cursor-dot" aria-hidden="true" style="display:none"></div>
 
 <div class="lang-toggle" id="lang-toggle" role="button" tabindex="0" aria-label="Switch language">
   <span id="lang-label">DE</span>
@@ -2409,51 +2407,123 @@
 (function(){
   if (window.matchMedia && window.matchMedia('(prefers-reduced-motion:reduce)').matches) return;
   var dot = document.getElementById('cursor-dot');
-  if (!dot) return;
-  var mx = -200, my = -200;
-  var dx = -200, dy = -200;
-  var hoverEls = 'a,button,.stack-card,.ap-card,.sp-card,.lang-toggle,.audio-btn,.dc-activity,.dc-avatar-block,.card-spotlight,[role="button"]';
-  var trails = [];
-  var maxTrails = 18;
-  for (var i = 0; i < maxTrails; i++){
-    var el = document.createElement('div');
-    el.style.cssText='position:fixed;top:0;left:0;z-index:9998;pointer-events:none;width:4px;height:4px;border-radius:50%;background:rgba(255,255,255,'+(0.4 - i*0.02)+');mix-blend-mode:difference;will-change:transform;';
-    document.body.appendChild(el);
-    trails.push({el:el, x:-200, y:-200});
+  if (dot) dot.style.display='none';
+  var c = document.createElement('canvas');
+  c.style.cssText='position:fixed;top:0;left:0;z-index:9998;pointer-events:none;width:100%;height:100%';
+  document.body.appendChild(c);
+  var ctx = c.getContext('2d');
+  var W=0, H=0;
+  function resize(){ W=c.width=window.innerWidth; H=c.height=window.innerHeight; }
+  resize();
+  window.addEventListener('resize',resize,{passive:true});
+
+  var mx=-200,my=-200,started=false;
+  document.addEventListener('mousemove',function(e){mx=e.clientX;my=e.clientY;started=true;});
+
+  var particles=[];
+  var maxP=35;
+  var mouseTrail=[];
+  var trailLen=12;
+  for(var i=0;i<trailLen;i++) mouseTrail.push({x:-200,y:-200});
+
+  function spawn(x,y,speed){
+    var a=Math.random()*Math.PI*2;
+    var spd=(0.3+Math.random()*0.8)*Math.min(speed*0.08,3);
+    var life=35+Math.random()*40;
+    particles.push({
+      x:x,y:y,
+      vx:Math.cos(a)*spd,
+      vy:Math.sin(a)*spd,
+      life:life,maxLife:life,
+      r:1+Math.random()*2.5,
+      glow:3+Math.random()*6,
+    });
+    if(particles.length>maxP*3)particles.splice(0,particles.length-maxP*3);
   }
-  document.addEventListener('mousemove',function(e){
-    mx=e.clientX;my=e.clientY;
-    dot.style.opacity='1';
-  });
-  document.addEventListener('mouseover',function(e){
-    if(!e.target.closest(hoverEls))return;
-    dot.classList.add('cursor-hover');
-  });
-  document.addEventListener('mouseout',function(e){
-    if(!e.target.closest(hoverEls))return;
-    var r=e.relatedTarget;
-    if(r&&r.closest&&r.closest(hoverEls))return;
-    dot.classList.remove('cursor-hover');
-  });
-  function tickCursor(){
-    dx+=(mx-dx)*0.18;
-    dy+=(my-dy)*0.18;
-    dot.style.setProperty('--cx',(mx-dx)+'px');
-    dot.style.setProperty('--cy',(my-dy)+'px');
-    dot.style.transform='translate('+(mx-3)+'px,'+(my-3)+'px)';
-    for (var i = trails.length-1; i > 0; i--){
-      trails[i].x+=(trails[i-1].x-trails[i].x)*0.35;
-      trails[i].y+=(trails[i-1].y-trails[i].y)*0.35;
+
+  var lastX=-200,lastY=-200;
+  function tick(){
+    ctx.clearRect(0,0,W,H);
+    if(!started){requestAnimationFrame(tick);return;}
+
+    mouseTrail.unshift({x:mx,y:my});
+    if(mouseTrail.length>trailLen)mouseTrail.pop();
+
+    var speed=Math.sqrt((mx-lastX)*(mx-lastX)+(my-lastY)*(my-lastY));
+    lastX=mx;lastY=my;
+
+    if(speed>1.5){
+      var count=Math.min(Math.floor(speed*0.15)+1,4);
+      for(var i=0;i<count;i++){
+        var t=i/count;
+        var px=mx+(lastX-mx)*t+(Math.random()-0.5)*speed*0.2;
+        var py=my+(lastY-my)*t+(Math.random()-0.5)*speed*0.2;
+        spawn(px,py,speed);
+      }
     }
-    trails[0].x+=(mx-trails[0].x)*0.3;
-    trails[0].y+=(my-trails[0].y)*0.3;
-    for (var i = 0; i < trails.length; i++){
-      var s = Math.max(0.3, 1 - i/maxTrails);
-      trails[i].el.style.transform='translate('+(trails[i].x-2)+'px,'+(trails[i].y-2)+'px) scale('+s+')';
+
+    for(var i=0;i<particles.length;i++){
+      var p=particles[i];
+      p.x+=p.vx;
+      p.y+=p.vy;
+      p.vx*=0.97;
+      p.vy*=0.97;
+      p.vy+=0.008;
+      p.life--;
+      var t=p.life/p.maxLife;
+      var alpha=t*t*0.8;
+      var r=p.r*t;
+
+      if(t>0.3){
+        var glow=ctx.createRadialGradient(p.x,p.y,0,p.x,p.y,p.glow*t);
+        glow.addColorStop(0,'rgba(255,255,255,'+(alpha*0.25)+')');
+        glow.addColorStop(1,'rgba(255,255,255,0)');
+        ctx.fillStyle=glow;
+        ctx.fillRect(p.x-p.glow*t,p.y-p.glow*t,p.glow*t*2,p.glow*t*2);
+      }
+
+      ctx.beginPath();
+      ctx.arc(p.x,p.y,Math.max(0.1,r),0,Math.PI*2);
+      ctx.fillStyle='rgba(255,255,255,'+alpha+')';
+      ctx.fill();
     }
-    requestAnimationFrame(tickCursor);
+    particles=particles.filter(function(p){return p.life>0;});
+
+    for(var i=0;i<mouseTrail.length;i++){
+      var t=i/mouseTrail.length;
+      var a=(1-t*t)*0.5;
+      var s=Math.max(0.4,1-t*0.7);
+      var r=2*s;
+
+      if(a>0.05){
+        var glow=ctx.createRadialGradient(mouseTrail[i].x,mouseTrail[i].y,0,mouseTrail[i].x,mouseTrail[i].y,12*s);
+        glow.addColorStop(0,'rgba(255,255,255,'+(a*0.2)+')');
+        glow.addColorStop(1,'rgba(255,255,255,0)');
+        ctx.fillStyle=glow;
+        ctx.fillRect(mouseTrail[i].x-12*s,mouseTrail[i].y-12*s,24*s,24*s);
+      }
+
+      ctx.beginPath();
+      ctx.arc(mouseTrail[i].x,mouseTrail[i].y,r,0,Math.PI*2);
+      ctx.fillStyle='rgba(255,255,255,'+a+')';
+      ctx.fill();
+    }
+
+    if(mouseTrail.length>2){
+      ctx.beginPath();
+      ctx.moveTo(mouseTrail[0].x,mouseTrail[0].y);
+      for(var i=1;i<mouseTrail.length;i++){
+        var t=i/mouseTrail.length;
+        ctx.lineTo(mouseTrail[i].x,mouseTrail[i].y);
+      }
+      ctx.strokeStyle='rgba(255,255,255,0.06)';
+      ctx.lineWidth=1;
+      ctx.stroke();
+    }
+
+    requestAnimationFrame(tick);
   }
-  tickCursor();
+  tick();
 })();
 </script>
 
