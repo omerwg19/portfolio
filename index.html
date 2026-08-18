@@ -1482,14 +1482,19 @@
     kick();
   }, { passive:true });
   window.addEventListener('resize', layout, { passive:true });
+  var loadedCount = 0;
   for (var i = 0; i < FRAME_COUNT; i++) {
-    var img = new Image();
-    img.decoding = 'async';
-    img.onload = function(){
-      if (i === 0 || !ready) { ready = true; layout(); }
-    };
-    img.src = 'bg-frames/' + String(i).padStart(3, '0') + '.webp';
-    frames[i] = img;
+    (function(idx){
+      var img = new Image();
+      img.decoding = 'async';
+      img.onload = function(){
+        loadedCount++;
+        if (!ready) { ready = true; }
+        layout();
+      };
+      img.src = 'bg-frames/' + String(idx).padStart(3, '0') + '.webp';
+      frames[idx] = img;
+    })(i);
   }
   layout();
 })();
